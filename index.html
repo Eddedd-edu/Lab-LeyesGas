@@ -168,8 +168,8 @@
                     <button class="lock-btn" id="lock-T" onclick="toggleLock('T')">🔓 Desbloqueado</button>
                 </div>
                 <div class="counter-wrapper">
-                    <button class="btn-hold" onmousedown="startAdjust('T', -2)" ontouchstart="startAdjust('T', -2)">-</button>
-                    <button class="btn-hold" onmousedown="startAdjust('T', 2)" ontouchstart="startAdjust('T', 2)">+</button>
+                    <button class="btn-hold" onmousedown="startAdjust('T', -1)" ontouchstart="startAdjust('T', -1)">-</button>
+                    <button class="btn-hold" onmousedown="startAdjust('T', 1)" ontouchstart="startAdjust('T', 1)">+</button>
                 </div>
             </div>
 
@@ -179,8 +179,8 @@
                     <button class="lock-btn" id="lock-V" onclick="toggleLock('V')">🔓 Desbloqueado</button>
                 </div>
                 <div class="counter-wrapper">
-                    <button class="btn-hold" onmousedown="startAdjust('V', -0.2)" ontouchstart="startAdjust('V', -0.2)">-</button>
-                    <button class="btn-hold" onmousedown="startAdjust('V', 0.2)" ontouchstart="startAdjust('V', 0.2)">+</button>
+                    <button class="btn-hold" onmousedown="startAdjust('V', -0.1)" ontouchstart="startAdjust('V', -0.1)">-</button>
+                    <button class="btn-hold" onmousedown="startAdjust('V', 0.1)" ontouchstart="startAdjust('V', 0.1)">+</button>
                 </div>
             </div>
 
@@ -217,13 +217,29 @@
         const R = 0.08206; 
         let lockedVar = 'none';
         let gameActive = false, currentMission = 0, timeLeft = 120, timer, totalScore = 0;
+        let activeMissions = [];
 
-        const missions = [
-            { text: "LEY DE BOYLE: Bloquea T. Reduce el Volumen a 11.2 L. La presión subirá a 2.00 atm.", check: () => Math.abs(state.V - 11.2) < 0.1 && Math.abs(state.P - 2.0) < 0.05 && lockedVar === 'T' },
-            { text: "LEY DE CHARLES: Bloquea P. Calienta el gas a 546 K. El volumen debe duplicarse a 44.8 L.", check: () => Math.abs(state.T - 546) < 2 && Math.abs(state.V - 44.8) < 0.2 && lockedVar === 'P' },
-            { text: "LEY DE GAY-LUSSAC: Bloquea V. Enfría el gas a 136 K. La presión debe caer a 0.50 atm.", check: () => Math.abs(state.T - 136) < 3 && Math.abs(state.P - 0.5) < 0.05 && lockedVar === 'V' },
-            { text: "FRACCIÓN MOLAR: Inyecta gas hasta tener 2.0 moles totales, con Xb (Azul) exactamente en 0.50.", check: () => { let n = state.nA + state.nB; return Math.abs(n - 2.0) < 0.05 && Math.abs((state.nB/n) - 0.5) < 0.02; } },
-            { text: "GAS IDEAL LIBRE: Desbloquea todo. Con n=1.5 y T=300 K, ajusta la presión para lograr V=36.9 L.", check: () => Math.abs(state.nA+state.nB - 1.5) < 0.05 && Math.abs(state.T - 300) < 2 && Math.abs(state.V - 36.9) < 0.5 && lockedVar === 'none' }
+        const allMissions = [
+            { text: "BOYLE: Bloquea T. Baja el volumen a 11.2 L para que P suba a 2.00 atm.", check: () => Math.abs(state.V - 11.2) < 0.1 && Math.abs(state.P - 2.0) < 0.05 && lockedVar === 'T' },
+            { text: "CHARLES: Bloquea P. Calienta a 546 K para duplicar el volumen a 44.8 L.", check: () => Math.abs(state.T - 546) < 2 && Math.abs(state.V - 44.8) < 0.2 && lockedVar === 'P' },
+            { text: "GAY-LUSSAC: Bloquea V. Enfría a 136 K para que P baje a 0.50 atm.", check: () => Math.abs(state.T - 136) < 3 && Math.abs(state.P - 0.5) < 0.05 && lockedVar === 'V' },
+            { text: "DALTON: Inyecta gas hasta n=2.0 total, con Xb (Azul) exactamente en 0.50.", check: () => { let n = state.nA + state.nB; return Math.abs(n - 2.0) < 0.05 && Math.abs((state.nB/n) - 0.5) < 0.02; } },
+            { text: "ESTÁNDAR: Ajusta n=1.0, T=273 K y P=1.00 atm. El volumen debe ser 22.4 L.", check: () => Math.abs(state.nA+state.nB-1.0)<0.05 && Math.abs(state.T-273)<1 && Math.abs(state.P-1.0)<0.05 },
+            { text: "ALTA PRESIÓN: Sin bloquear nada, logra que la presión llegue a 5.00 atm con T=300 K.", check: () => Math.abs(state.P - 5.0) < 0.1 && Math.abs(state.T - 300) < 5 },
+            { text: "VACÍO PARCIAL: Extrae gas hasta que n=0.2 moles y luego ajusta V para que P=0.50 atm.", check: () => Math.abs(state.nA+state.nB - 0.2) < 0.05 && Math.abs(state.P - 0.5) < 0.05 },
+            { text: "SUPER CALIENTE: Bloquea V. Sube la temperatura al máximo (1000 K).", check: () => state.T >= 995 && lockedVar === 'V' },
+            { text: "CÁMARA PEQUEÑA: Bloquea T. Reduce el volumen al mínimo posible (5.0 L).", check: () => state.V <= 5.1 && lockedVar === 'T' },
+            { text: "MEZCLA RICA: Ten exactamente 0.80 moles de Rojo (nA) y 0.20 de Azul (nB).", check: () => Math.abs(state.nA - 0.8) < 0.02 && Math.abs(state.nB - 0.2) < 0.02 },
+            { text: "PRESIÓN CONSTANTE: Bloquea P. Enfría el gas a 100 K y observa la reducción de V.", check: () => Math.abs(state.T - 100) < 5 && lockedVar === 'P' },
+            { text: "EQUILIBRIO: Logra que Pa y Pb sean iguales (0.50 atm cada uno) con P total = 1.00.", check: () => Math.abs(state.nA - state.nB) < 0.05 && Math.abs(state.P - 1.0) < 0.05 && state.nA > 0 },
+            { text: "COMPRESIÓN ADIABÁTICA (Sim): Bloquea n. Reduce V a 10 L y sube T a 400 K.", check: () => Math.abs(state.V - 10) < 0.5 && Math.abs(state.T - 400) < 5 },
+            { text: "SOLO AZUL: Extrae todo el gas rojo y deja exactamente 1.5 moles de azul.", check: () => state.nA === 0 && Math.abs(state.nB - 1.5) < 0.05 },
+            { text: "TENSIÓN: Con V=20 L y T=500 K, inyecta gas hasta que la presión supere los 3.00 atm.", check: () => Math.abs(state.V-20)<1 && Math.abs(state.T-500)<5 && state.P > 3.0 },
+            { text: "FRÍO EXTREMO: Bloquea P. Baja la temperatura a 50 K.", check: () => state.T <= 55 && lockedVar === 'P' },
+            { text: "DENSIDAD ALTA: Mete el máximo de moles totales (5.0 moles) en el volumen mínimo (5.0 L).", check: () => (state.nA + state.nB) >= 4.9 && state.V <= 5.1 },
+            { text: "PUNTO MEDIO: Ajusta todos los valores para que P=2.0, V=20.0 y n=1.0. (Calcula T necesaria).", check: () => Math.abs(state.P-2)<0.1 && Math.abs(state.V-20)<0.5 && Math.abs(state.nA+state.nB-1)<0.1 },
+            { text: "MEZCLA AZUL: Logra una fracción molar de azul (Xb) de 0.75.", check: () => { let n = state.nA + state.nB; return n > 0 && Math.abs((state.nB/n) - 0.75) < 0.02; } },
+            { text: "EXPANSIÓN: Bloquea T. Aumenta el volumen a 40 L.", check: () => Math.abs(state.V - 40) < 1 && lockedVar === 'T' }
         ];
 
         // --- FUNCIONES GLOBALES ---
@@ -280,6 +296,8 @@
         }
 
         window.startMissions = () => {
+            // Seleccionar 5 misiones aleatorias
+            activeMissions = [...allMissions].sort(() => 0.5 - Math.random()).slice(0, 5);
             gameActive = true; currentMission = 0; totalScore = 0;
             document.getElementById('mission-panel').style.display = 'block';
             state = { P: 1.0, V: 22.4, T: 273, nA: 1.0, nB: 0.0 };
@@ -287,7 +305,7 @@
         };
 
         async function saveScore(name, score) {
-            if (score <= 0) return;
+            if (!name || score <= 0) return;
             try {
                 await addDoc(collection(db, "records"), {
                     name: name || "Anónimo",
@@ -299,16 +317,17 @@
         }
 
         function loadMission() {
-            if (currentMission >= missions.length) { 
+            if (currentMission >= activeMissions.length) { 
                 clearInterval(timer);
-                const userName = prompt(`¡Misiones completadas! Puntuación final: ${totalScore}. Tu nombre:`);
-                saveScore(userName, totalScore);
+                const userName = prompt(`¡Felicidades! Completaste las 5 misiones. Puntuación final: ${totalScore}. Ingresa tu nombre:`);
+                if(userName) saveScore(userName, totalScore);
                 window.setMode('libre'); 
                 return; 
             }
-            document.getElementById('mission-desc').innerText = missions[currentMission].text;
-            document.getElementById('mission-tracker').innerText = `${currentMission + 1}/${missions.length}`;
+            document.getElementById('mission-desc').innerText = activeMissions[currentMission].text;
+            document.getElementById('mission-tracker').innerText = `${currentMission + 1}/${activeMissions.length}`;
             timeLeft = 120;
+            document.getElementById('time-display').innerText = timeLeft;
             clearInterval(timer);
             timer = setInterval(() => {
                 timeLeft--; 
@@ -316,15 +335,15 @@
                 if (timeLeft <= 0) { 
                     clearInterval(timer);
                     alert("¡Tiempo agotado!");
-                    const userName = prompt(`Misión fallida. Puntuación acumulada: ${totalScore}. Ingresa tu nombre para el ranking:`);
-                    saveScore(userName, totalScore);
+                    const userName = prompt(`Juego terminado. Puntuación: ${totalScore}. Tu nombre:`);
+                    if(userName) saveScore(userName, totalScore);
                     window.setMode('libre'); 
                 }
             }, 1000);
         }
 
         function checkMissionCompleted() {
-            if (missions[currentMission].check()) {
+            if (activeMissions[currentMission].check()) {
                 totalScore += timeLeft;
                 currentMission++;
                 loadMission();
@@ -420,19 +439,15 @@
         function drawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Posición del pistón
             let pistonY = canvas.height - (state.V / 50) * (canvas.height - 40);
             pistonY = Math.max(20, Math.min(canvas.height - 30, pistonY));
 
-            // BARRA DEL PISTÓN
             ctx.fillStyle = "#414868";
             ctx.fillRect(canvas.width / 2 - 4, 0, 8, pistonY);
 
-            // PISTÓN
             ctx.fillStyle = "#9ece6a"; 
             ctx.fillRect(5, pistonY, canvas.width - 10, 15);
 
-            // PARTÍCULAS
             let speedMult = Math.sqrt(state.T) * 0.15;
             particles.forEach(p => {
                 p.x += p.vx * speedMult; p.y += p.vy * speedMult;
