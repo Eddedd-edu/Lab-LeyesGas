@@ -10,6 +10,7 @@
             --gas-a: #f7768e; --gas-b: #7dcfff; --piston: #9ece6a;
             --correct: #73daca; --error: #f7768e; --warning: #ff9e64;
             --btn-bg: #414868; --btn-hover: #565f89; --accent: #7aa2f7;
+            --rod-color: #414868;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -193,7 +194,6 @@
     </div>
 
     <script type="module">
-        // --- CONFIGURACIÓN FIREBASE ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
@@ -224,7 +224,7 @@
             { text: "GAS IDEAL LIBRE: Desbloquea todo. Con n=1.5 y T=300 K, ajusta la presión para lograr V=36.9 L.", check: () => Math.abs(state.nA+state.nB - 1.5) < 0.05 && Math.abs(state.T - 300) < 2 && Math.abs(state.V - 36.9) < 0.5 && lockedVar === 'none' }
         ];
 
-        // --- FUNCIONES GLOBALES (Vinculadas a Window para HTML) ---
+        // --- FUNCIONES GLOBALES ---
         window.toggleLock = (variable) => {
             lockedVar = (lockedVar === variable) ? 'none' : variable;
             ['P', 'V', 'T'].forEach(v => {
@@ -236,41 +236,33 @@
         };
 
         window.setMode = (mode) => { 
-            gameActive = false; clearInterval(timer); 
+            gameActive = false; 
+            clearInterval(timer); 
             document.getElementById('mission-panel').style.display = 'none'; 
             document.getElementById('records-panel').style.display = 'none'; 
         };
 
         window.toggleRecords = async () => {
             const panel = document.getElementById('records-panel');
-            if (panel.style.display === 'block') {
-                panel.style.display = 'none';
-            } else {
-                panel.style.display = 'block';
-                await updateRecordsUI();
-            }
+            if (panel.style.display === 'block') { panel.style.display = 'none'; } 
+            else { panel.style.display = 'block'; await updateRecordsUI(); }
         };
 
         async function updateRecordsUI() {
             const list = document.getElementById('record-list');
-            list.innerHTML = '<li>Cargando desde Firebase...</li>';
+            list.innerHTML = '<li>Cargando...</li>';
             try {
                 const q = query(collection(db, "records"), orderBy("score", "desc"), limit(5));
                 const querySnapshot = await getDocs(q);
                 list.innerHTML = '';
-                if (querySnapshot.empty) {
-                    list.innerHTML = '<li>No hay récords aún. ¡Sé el primero!</li>';
-                }
+                if (querySnapshot.empty) { list.innerHTML = '<li>No hay récords aún.</li>'; }
                 querySnapshot.forEach((doc) => {
                     const r = doc.data();
                     const li = document.createElement('li');
                     li.innerHTML = `<span>${r.name}</span><span style="color:var(--correct)">${r.score} pts</span>`;
                     list.appendChild(li);
                 });
-            } catch (e) { 
-                console.error(e);
-                list.innerHTML = '<li>Error al conectar con la base de datos.</li>'; 
-            }
+            } catch (e) { list.innerHTML = '<li>Error de conexión.</li>'; }
         }
 
         window.startMissions = () => {
@@ -281,21 +273,21 @@
         };
 
         async function saveScore(name, score) {
+            if (score <= 0) return;
             try {
                 await addDoc(collection(db, "records"), {
                     name: name || "Anónimo",
                     score: score,
                     date: new Date()
                 });
-                alert("Puntuación guardada en la nube.");
-            } catch (e) {
-                console.error("Error al guardar:", e);
-            }
+                alert("Puntuación guardada exitosamente.");
+            } catch (e) { console.error("Error al guardar:", e); }
         }
 
         function loadMission() {
             if (currentMission >= missions.length) { 
-                const userName = prompt(`¡Misiones completadas! Puntuación: ${totalScore}. Introduce tu nombre para el Top Global:`);
+                clearInterval(timer);
+                const userName = prompt(`¡Misiones completadas! Puntuación final: ${totalScore}. Tu nombre:`);
                 saveScore(userName, totalScore);
                 window.setMode('libre'); 
                 return; 
@@ -305,8 +297,15 @@
             timeLeft = 120;
             clearInterval(timer);
             timer = setInterval(() => {
-                timeLeft--; document.getElementById('time-display').innerText = timeLeft;
-                if (timeLeft <= 0) { alert("¡Tiempo agotado!"); window.setMode('libre'); }
+                timeLeft--; 
+                document.getElementById('time-display').innerText = timeLeft;
+                if (timeLeft <= 0) { 
+                    clearInterval(timer);
+                    alert("¡Tiempo agotado!");
+                    const userName = prompt(`Misión fallida. Puntuación acumulada: ${totalScore}. Ingresa tu nombre para el ranking:`);
+                    saveScore(userName, totalScore);
+                    window.setMode('libre'); 
+                }
             }, 1000);
         }
 
@@ -318,7 +317,6 @@
             }
         }
 
-        // --- FÍSICA Y CANVAS ---
         window.calculatePhysics = (source, delta) => {
             let n = state.nA + state.nB;
             if (n <= 0 && source !== 'nA' && source !== 'nB') return;
@@ -387,10 +385,7 @@
 
         let holdTimer = null;
         window.startAdjust = (variable, delta) => {
-            const tick = () => {
-                window.calculatePhysics(variable, delta);
-                holdTimer = setTimeout(tick, 50);
-            };
+            const tick = () => { window.calculatePhysics(variable, delta); holdTimer = setTimeout(tick, 50); };
             tick();
             const stop = () => clearTimeout(holdTimer);
             document.addEventListener('mouseup', stop, {once:true});
@@ -398,19 +393,32 @@
         };
 
         const canvas = document.getElementById('gasCanvas'); const ctx = canvas.getContext('2d'); let particles = [];
+        
         function updateParticleCount() {
             const targetA = Math.floor(state.nA * 20); const targetB = Math.floor(state.nB * 20);
             let currentA = particles.filter(p => p.type === 'A').length; let currentB = particles.filter(p => p.type === 'B').length;
-            while (currentA < targetA) { particles.push({ x: Math.random()*260+10, y: 150, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, type: 'A', color: '#f7768e', radius: 4 }); currentA++; }
+            while (currentA < targetA) { particles.push({ x: Math.random()*260+10, y: 200, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, type: 'A', color: '#f7768e', radius: 4 }); currentA++; }
             while (currentA > targetA) { particles.splice(particles.findIndex(p => p.type === 'A'), 1); currentA--; }
-            while (currentB < targetB) { particles.push({ x: Math.random()*260+10, y: 150, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, type: 'B', color: '#7dcfff', radius: 4 }); currentB++; }
+            while (currentB < targetB) { particles.push({ x: Math.random()*260+10, y: 200, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, type: 'B', color: '#7dcfff', radius: 4 }); currentB++; }
             while (currentB > targetB) { particles.splice(particles.findIndex(p => p.type === 'B'), 1); currentB--; }
         }
 
         function drawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Posición del pistón
             let pistonY = canvas.height - (state.V / 50) * (canvas.height - 40);
-            ctx.fillStyle = "#9ece6a"; ctx.fillRect(5, pistonY, canvas.width - 10, 15);
+            pistonY = Math.max(20, Math.min(canvas.height - 30, pistonY));
+
+            // BARRA DEL PISTÓN
+            ctx.fillStyle = "#414868";
+            ctx.fillRect(canvas.width / 2 - 4, 0, 8, pistonY);
+
+            // PISTÓN
+            ctx.fillStyle = "#9ece6a"; 
+            ctx.fillRect(5, pistonY, canvas.width - 10, 15);
+
+            // PARTÍCULAS
             let speedMult = Math.sqrt(state.T) * 0.15;
             particles.forEach(p => {
                 p.x += p.vx * speedMult; p.y += p.vy * speedMult;
@@ -418,12 +426,12 @@
                 if (p.y > 275) p.vy *= -1; 
                 if (p.y < pistonY + 15) { p.y = pistonY + 16; p.vy = Math.abs(p.vy); }
                 ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2); ctx.fillStyle = p.color; ctx.fill();
-            }); requestAnimationFrame(drawCanvas);
+            }); 
+            requestAnimationFrame(drawCanvas);
         }
 
         window.resetGases = () => { state.nA = 0; state.nB = 0; state.P = 0; updateParticleCount(); updateUI(); };
 
-        // Inicio
         updateParticleCount(); updateUI(); drawCanvas();
     </script>
 </body>
